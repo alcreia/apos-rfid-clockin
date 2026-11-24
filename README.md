@@ -166,11 +166,16 @@ The kiosk needs this folder and Node 22 — no database, no share, no build serv
    schtasks /query /tn "RFID clock-in kiosk" /v /fo list | findstr /i "Task To Run"
    ```
 
-   `hidden.vbs` launches `serve.bat` and `kiosk.bat` with no window. You never run
-   `npm start` by hand and never leave a window open. Both scripts loop: the server
-   comes back 5 s after any crash, the browser reopens within 20 s if it is closed.
-   Server output goes to `data\server.log` — delete that file to clear it, read it when
-   a tap does not arrive.
+   `hidden.vbs` launches `serve.bat` and, unless told otherwise, `kiosk.bat` — both
+   with no window. You never run `npm start` by hand and never leave a window open.
+   Both scripts loop: the server comes back 5 s after any crash, the browser reopens
+   within 20 s if it is closed. Server output goes to `data\server.log` — delete that
+   file to clear it, read it when a tap does not arrive.
+
+   **`KIOSK_AUTOSTART` in `.env` controls the browser half.** `1` (or absent) opens the
+   fullscreen kiosk at logon, which is what the door wants. `0` starts the server only,
+   for a machine you also use for other work — then open `http://127.0.0.1:<PORT>`
+   yourself when you want the kiosk.
 
    Deleting a task does not stop an instance it already started, so reboot the door PC
    once after this step. That also tests the thing the task exists for.
