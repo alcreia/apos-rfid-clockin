@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { api, postJson } from './api.js';
 
 type Outcome =
   | { kind: 'idle' }
@@ -6,82 +7,132 @@ type Outcome =
   | { kind: 'duplicate'; name: string; time: string | null }
   | { kind: 'unknown' }
   // The server did not answer, or answered with a 5xx. Distinct from 'unknown': the
-  // card may be perfectly enrolled and the employee is being told the wrong thing.
+  // card may be perfectly enrolled and the employee would be told the wrong thing.
   | { kind: 'error' };
 
 const RESULT_MS = 3000;
 
-export default function Kiosk() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState('');
-  const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
-  const [now, setNow] = useState(new Date());
-  const [pending, setPending] = useState(0);
-  const [mode, setMode] = useState('stub');
-  const timer = useRef<number | null>(null);
+/**
+ * Formatters are built once. `toLocaleTimeString(…, { timeZone })` constructs a new
+ * Intl.DateTimeFormat on every call, which measured 78x slower than reusing one — and
+ * this used to run on every one-second tick.
+ */
+const CLOCK_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Jakarta',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+const DATE_FMT = new Intl.DateTimeFormat('id-ID', {
+  timeZone: 'Asia/Jakarta',
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+/** Owns the per-second tick, so the result card is not re-rendered 60 times a minute. */
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
+  return (
+    <header className="kiosk__head">
+      <div className="kiosk__clock">{CLOCK_FMT.format(now)}</div>
+      <div className="kiosk__date">{DATE_FMT.format(now)}</div>
+    </header>
+  );
+}
+
+type CardProps = { icon: string; title: string; sub?: string; modifier?: string; iconClass?: string };
+
+function Card({ icon, title, sub, modifier, iconClass }: CardProps) {
+  return (
+    <div className={modifier ? `card ${modifier}` : 'card'}>
+      <div className={iconClass ? `card__icon ${iconClass}` : 'card__icon'} aria-hidden="true">
+        {icon}
+      </div>
+      <div className="card__title">{title}</div>
+      {sub ? <div className="card__sub">{sub}</div> : null}
+    </div>
+  );
+}
+
+/** One component per outcome — no && chains, and adding a state is a compile error. */
+function OutcomeCard({ outcome }: { outcome: Outcome }) {
+  switch (outcome.kind) {
+    case 'idle':
+      return <Card icon="◉" iconClass="card__icon--tap" title="Tempelkan kartu Anda" />;
+    case 'ok':
+      return <Card modifier="card--ok" icon="✓" title={outcome.name} sub={`Tap absen di jam ${outcome.time}`} />;
+    case 'duplicate':
+      return (
+        <Card
+          modifier="card--dup"
+          icon="↺"
+          title={outcome.name}
+          sub={`Sudah tap${outcome.time ? ` di jam ${outcome.time}` : ''}`}
+        />
+      );
+    case 'unknown':
+      return <Card modifier="card--err" icon="✕" title="Kartu tidak dikenal" />;
+    case 'error':
+      return <Card modifier="card--warn" icon="!" title="Gagal menyimpan" sub="Silakan tap ulang" />;
+  }
+
+  const exhaustive: never = outcome;
+  return exhaustive;
+}
+
+type TapResponse = { status?: string; name?: string; time?: string };
+
+export default function Kiosk() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState('');
+  const [outcome, setOutcome] = useState<Outcome>({ kind: 'idle' });
+  const [unsaved, setUnsaved] = useState(0);
+  const [mode, setMode] = useState('stub');
+  const timer = useRef<number | null>(null);
+
   useEffect(() => {
-    const poll = () =>
-      fetch('/api/state')
-        .then((r) => r.json())
-        .then((s: { pending: number; unsynced: number; mode: string }) => {
-          // Queue length alone reads zero after the retries are exhausted, which would
-          // show "saved" for a tap that never reached the sheet.
-          setPending(s.pending + s.unsynced);
-          setMode(s.mode);
-        })
-        .catch(() => {});
-    poll();
-    const id = window.setInterval(poll, 5000);
+    const poll = async () => {
+      const { body } = await api<{ pending: number; unsynced: number; mode: string }>('/api/state');
+      if (!body) return;
+      // Queue length alone reads zero once retries are exhausted, which would show
+      // "saved" for a tap that never reached the sheet.
+      setUnsaved(body.pending + body.unsynced);
+      setMode(body.mode);
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), 5000);
     return () => window.clearInterval(id);
   }, []);
 
-  const focus = () => inputRef.current?.focus({ preventScroll: true });
   useEffect(() => {
-    focus();
-    const id = window.setInterval(focus, 1500);
+    const id = window.setInterval(() => inputRef.current?.focus({ preventScroll: true }), 1500);
     return () => window.clearInterval(id);
   }, []);
 
   const submit = async (raw: string) => {
     if (raw.trim().length < 2) return;
-    const res = await fetch('/api/tap', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw }),
-    }).catch(() => null);
 
-    const body = res ? await res.json().catch(() => null) : null;
-    if (body?.status === 'recorded') setOutcome({ kind: 'ok', name: body.name, time: body.time });
-    else if (body?.status === 'duplicate') setOutcome({ kind: 'duplicate', name: body.name, time: body.time });
-    else if (!res || res.status >= 500) setOutcome({ kind: 'error' });
+    const { status, body, networkError } = await postJson<TapResponse>('/api/tap', { raw });
+
+    if (body?.status === 'recorded') setOutcome({ kind: 'ok', name: body.name ?? '', time: body.time ?? '' });
+    else if (body?.status === 'duplicate') setOutcome({ kind: 'duplicate', name: body.name ?? '', time: body.time ?? null });
+    else if (networkError || status >= 500) setOutcome({ kind: 'error' });
     else setOutcome({ kind: 'unknown' });
 
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setOutcome({ kind: 'idle' }), RESULT_MS);
   };
 
-  const clock = now.toLocaleTimeString('en-GB', {
-    timeZone: 'Asia/Jakarta',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const date = now.toLocaleDateString('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
   return (
-    <div className={`kiosk kiosk--${outcome.kind}`} onMouseDown={focus}>
+    <div className={`kiosk kiosk--${outcome.kind}`} onMouseDown={() => inputRef.current?.focus({ preventScroll: true })}>
       <input
         ref={inputRef}
         className="wedge"
@@ -89,69 +140,27 @@ export default function Kiosk() {
         autoFocus
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            const raw = e.currentTarget.value;
-            // Clear the node synchronously too: a state update is async, and a second
-            // burst in the same tick would append its digits to this one.
-            e.currentTarget.value = '';
-            setValue('');
-            void submit(raw);
-          }
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          const raw = e.currentTarget.value;
+          // Clear the node synchronously too: a state update is async, and a second
+          // burst in the same tick would append its digits to this one.
+          e.currentTarget.value = '';
+          setValue('');
+          void submit(raw);
         }}
         aria-label="card reader input"
       />
 
-      <header className="kiosk__head">
-        <div className="kiosk__clock">{clock}</div>
-        <div className="kiosk__date">{date}</div>
-      </header>
+      <Clock />
 
-      <main className="kiosk__stage">
-        {outcome.kind === 'idle' && (
-          <div className="card">
-            <div className="card__icon card__icon--tap">◉</div>
-            <div className="card__title">Tempelkan kartu Anda</div>
-          </div>
-        )}
-
-        {outcome.kind === 'ok' && (
-          <div className="card card--ok">
-            <div className="card__icon">✓</div>
-            <div className="card__title">{outcome.name}</div>
-            <div className="card__sub">Tap absen di jam {outcome.time}</div>
-          </div>
-        )}
-
-        {outcome.kind === 'duplicate' && (
-          <div className="card card--dup">
-            <div className="card__icon">↺</div>
-            <div className="card__title">{outcome.name}</div>
-            <div className="card__sub">
-              Sudah tap{outcome.time ? ` di jam ${outcome.time}` : ''}
-            </div>
-          </div>
-        )}
-
-        {outcome.kind === 'unknown' && (
-          <div className="card card--err">
-            <div className="card__icon">✕</div>
-            <div className="card__title">Kartu tidak dikenal</div>
-          </div>
-        )}
-
-        {outcome.kind === 'error' && (
-          <div className="card card--warn">
-            <div className="card__icon">!</div>
-            <div className="card__title">Gagal menyimpan</div>
-            <div className="card__sub">Silakan tap ulang</div>
-          </div>
-        )}
+      <main className="kiosk__stage" role="status" aria-live="polite">
+        <OutcomeCard outcome={outcome} />
       </main>
 
       <footer className="kiosk__foot">
-        <span className={`badge ${pending > 0 ? 'badge--warn' : 'badge--ok'}`}>
-          {pending > 0 ? `${pending} belum masuk` : 'Tersimpan'}
+        <span className={`badge ${unsaved > 0 ? 'badge--warn' : 'badge--ok'}`}>
+          {unsaved > 0 ? `${unsaved} belum masuk` : 'Tersimpan'}
         </span>
         {mode === 'stub' && <span className="badge badge--stub">stub mode — not writing to Google</span>}
       </footer>

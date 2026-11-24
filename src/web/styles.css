@@ -373,3 +373,12 @@ button.ghost:hover {
 .card--warn .card__icon {
   color: var(--warn);
 }
+
+/* Respect the OS setting: the kiosk is a task surface, not a showcase. */
+@media (prefers-reduced-motion: reduce) {
+  .kiosk,
+  .card {
+    transition: none;
+    animation: none;
+  }
+}

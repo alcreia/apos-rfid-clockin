@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RosterImport from './RosterImport.js';
+import { api, postJson } from './api.js';
 
 type Decoded = { cleaned: string; asDecimal: string | null; asHex: string | null };
 type Employee = { uid: string; name: string };
@@ -33,12 +34,12 @@ export default function Dev() {
   const [log, setLog] = useState<Array<{ raw: string; uid: string | null; at: string }>>([]);
 
   const refresh = useCallback(async () => {
-    const [roster, rej] = await Promise.all([
-      fetch('/api/dev/roster').then((r) => r.json()),
-      fetch('/api/dev/rejected').then((r) => r.json()),
+    const [roster, rejected] = await Promise.all([
+      api<{ employees?: Employee[] }>('/api/dev/roster'),
+      api<{ entries?: Rejected[] }>('/api/dev/rejected'),
     ]);
-    setEmployees(roster.employees ?? []);
-    setRejected(rej.entries ?? []);
+    if (roster.body?.employees) setEmployees(roster.body.employees);
+    setRejected(rejected.body?.entries ?? []);
   }, []);
 
   useEffect(() => {
@@ -56,8 +57,9 @@ export default function Dev() {
     return () => window.clearInterval(id);
   }, []);
 
-  const nameFor = (uid: string | null) =>
-    uid ? (employees.find((e) => e.uid === uid)?.name ?? null) : null;
+  // Built once per roster change: the burst log looks a name up for every row.
+  const nameByUid = useMemo(() => new Map(employees.map((e) => [e.uid, e.name])), [employees]);
+  const nameFor = (uid: string | null) => (uid ? (nameByUid.get(uid) ?? null) : null);
 
   /**
    * A reader burst ends with Enter. Commit it, then empty the box — otherwise the
@@ -76,13 +78,17 @@ export default function Dev() {
 
   const enrol = async () => {
     if (!lastRaw || !name) return;
-    const res = await fetch('/api/dev/enroll', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw: lastRaw, name }),
-    });
-    const body = await res.json();
-    setNotice(body.error ? `error: ${body.error}` : `enrolled ${body.uid} as ${body.name}`);
+    const { body, networkError } = await postJson<{ uid?: string; name?: string; error?: string }>(
+      '/api/dev/enroll',
+      { raw: lastRaw, name },
+    );
+    setNotice(
+      networkError
+        ? 'server unreachable'
+        : body?.error
+          ? `error: ${body.error}`
+          : `enrolled ${body?.uid} as ${body?.name}`,
+    );
     setName('');
     setDecoded(null);
     setLastRaw('');
@@ -102,12 +108,8 @@ export default function Dev() {
   const simulate = async () => {
     const dec = /^\d+$/.test(manualUid) ? manualUid : encodeToReaderDecimal(manualUid);
     if (!dec) return setNotice('need a UID (8 hex) or a decimal value');
-    const res = await fetch('/api/tap', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw: dec }),
-    });
-    setNotice(`POST /api/tap ${dec} -> ${res.status} ${JSON.stringify(await res.json())}`);
+    const { status, body, networkError } = await postJson('/api/tap', { raw: dec });
+    setNotice(networkError ? 'server unreachable' : `POST /api/tap ${dec} -> ${status} ${JSON.stringify(body)}`);
     await refresh();
   };
 
@@ -334,13 +336,11 @@ function AssignCard({ entry, onDone }: { entry: Rejected; onDone: () => void }) 
   if (!uid) return <span className="dev__lead">not a card read</span>;
 
   const submit = async () => {
-    const res = await fetch('/api/dev/enroll', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ raw: entry.raw, name }),
+    const { body, networkError } = await postJson<{ uid?: string; error?: string }>('/api/dev/enroll', {
+      raw: entry.raw,
+      name,
     });
-    const body = await res.json();
-    setMsg(body.error ? body.error : body.uid);
+    setMsg(networkError ? 'server unreachable' : (body?.error ?? body?.uid ?? ''));
     setName('');
     onDone();
   };

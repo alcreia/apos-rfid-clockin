@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { postJson } from './api.js';
 
 type AppliedRow = {
   line: number;
@@ -34,12 +35,18 @@ export default function RosterImport({ onApplied }: { onApplied: () => void }) {
     setBusy(true);
     setNotice('');
     try {
-      const res = await fetch('/api/dev/roster/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode, dryRun }),
-      });
-      const body = (await res.json()) as ImportResponse & { error?: string };
+      const { body, networkError } = await postJson<ImportResponse & { error?: string }>(
+        '/api/dev/roster/import',
+        { text, mode, dryRun },
+      );
+      if (networkError) {
+        setNotice('server unreachable');
+        return;
+      }
+      if (!body) {
+        setNotice('the server returned something that was not JSON');
+        return;
+      }
       if (body.error) {
         setNotice(body.error);
         return;

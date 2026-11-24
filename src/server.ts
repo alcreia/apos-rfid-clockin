@@ -279,6 +279,18 @@ app.use(express.static(DIST));
 // Express 5 / path-to-regexp v8 rejects `*`, so match with a regex.
 app.get(/^\/dev(\/.*)?$/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
 
+/**
+ * Without this, a malformed JSON body or an oversized one returns Express's HTML error
+ * page and a stack trace in the log; the clients are written to read JSON, so they would
+ * fall through to "unknown card" instead of a real error.
+ */
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status =
+    (err as { status?: number })?.status ?? (err as { statusCode?: number })?.statusCode ?? 500;
+  console.error('[http]', status, (err as Error)?.message ?? String(err));
+  res.status(status).json({ error: status === 400 ? 'bad request body' : 'request failed' });
+});
+
 app.listen(PORT, '127.0.0.1', () => {
   const url = `http://127.0.0.1:${PORT}`;
   // kiosk.bat reads this instead of hard-coding a port, so changing PORT in .env does
