@@ -1,0 +1,14 @@
+node_modules/
+dist/
+data/
+.env
+secrets/
+*.log
+
+# A downloaded Google key lands in whatever folder the browser picks. Treat every
+# JSON as suspect and whitelist the project's own, so this cannot happen again.
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!test/fixtures/*.json

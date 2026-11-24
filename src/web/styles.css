@@ -1,0 +1,375 @@
+:root {
+  --bg: #0b0f14;
+  --panel: #121821;
+  --line: #1f2a37;
+  --ink: #e8eef6;
+  --dim: #8a99ab;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ---------- kiosk ---------- */
+
+.kiosk {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  /* Both axes: a 768-tall door screen and a 640-tall browser window must not get the
+     same physical type size. */
+  padding: clamp(20px, 3.4vh, 48px) clamp(24px, 4vw, 56px);
+  transition: background 180ms ease;
+}
+
+.kiosk--ok {
+  background: radial-gradient(1200px 600px at 50% 40%, rgba(34, 197, 94, 0.16), var(--bg) 70%);
+}
+.kiosk--duplicate {
+  background: radial-gradient(1200px 600px at 50% 40%, rgba(245, 158, 11, 0.16), var(--bg) 70%);
+}
+.kiosk--unknown {
+  background: radial-gradient(1200px 600px at 50% 40%, rgba(239, 68, 68, 0.18), var(--bg) 70%);
+}
+
+/* The wedge reader types here; it must stay focused and invisible. */
+.wedge {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.kiosk__head {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(10px, 1.4vw, 24px);
+}
+
+.kiosk__clock {
+  font-size: clamp(34px, min(5.6vw, 10.5vh), 84px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.kiosk__date {
+  color: var(--dim);
+  font-size: clamp(12px, min(1.5vw, 2.3vh), 22px);
+}
+
+.kiosk__stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+
+.card {
+  display: grid;
+  justify-items: center;
+  gap: clamp(4px, 0.8vh, 12px);
+  padding: 0 clamp(8px, 2vw, 24px);
+  max-width: 100%;
+  text-align: center;
+  animation: rise 220ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+.card__icon {
+  font-size: clamp(44px, min(8.5vw, 15vh), 140px);
+  line-height: 1;
+  color: var(--dim);
+}
+
+.card--ok .card__icon {
+  color: var(--ok);
+}
+.card--dup .card__icon {
+  color: var(--warn);
+}
+.card--err .card__icon {
+  color: var(--err);
+}
+.card__icon--tap {
+  color: #2b3a4d;
+}
+
+.card__title {
+  font-size: clamp(28px, min(4.8vw, 9vh), 76px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  /* A long name must wrap inside the screen instead of running off it. */
+  max-width: 100%;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+.card__sub {
+  font-size: clamp(15px, min(1.9vw, 3.2vh), 32px);
+  color: var(--dim);
+}
+
+.kiosk__foot {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.badge--ok {
+  color: var(--ok);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.badge--warn {
+  color: var(--warn);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+.badge--stub {
+  color: var(--dim);
+}
+
+/* ---------- dev ---------- */
+
+.dev {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.dev h1 {
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.dev h2 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin: 0 0 12px;
+}
+
+.dev__lead {
+  color: var(--dim);
+  font-size: 14px;
+  margin: 6px 0 20px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.dev__input {
+  width: 100%;
+  background: #0b1119;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.row .dev__input {
+  flex: 1;
+}
+
+button {
+  background: #1d6ee0;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #24303f;
+  color: var(--dim);
+  cursor: not-allowed;
+}
+
+.dev__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.dev__table th,
+.dev__table td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.dev__table th {
+  color: var(--dim);
+  font-weight: 500;
+  width: 40%;
+}
+
+.dev__table thead th {
+  width: auto;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+  color: #9ad0ff;
+}
+
+.dev__notice {
+  margin-top: 12px;
+  color: var(--warn);
+  font-size: 14px;
+  word-break: break-all;
+}
+
+/* ---------- enrolment ---------- */
+
+.dev__textarea {
+  min-height: 150px;
+  margin-top: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.dev__select {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.chip--add {
+  color: var(--ok);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.chip--upd {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.4);
+}
+.chip--del,
+.chip--err {
+  color: var(--err);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+.chip--same {
+  color: var(--dim);
+}
+
+.row--err td {
+  background: rgba(239, 68, 68, 0.07);
+}
+
+button.primary {
+  background: var(--ok);
+  color: #04140a;
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-weight: 500;
+}
+
+button.ghost:hover {
+  color: var(--ink);
+  border-color: #33445a;
+}
+
+.link {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #60a5fa;
+  text-decoration: none;
+  margin-left: 6px;
+}
+
+.assign {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assign .dev__input {
+  width: 120px;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+/* the server did not answer — distinct from an unknown card */
+.kiosk--error {
+  background: radial-gradient(1200px 600px at 50% 40%, rgba(245, 158, 11, 0.14), var(--bg) 70%);
+}
+.card--warn .card__icon {
+  color: var(--warn);
+}
