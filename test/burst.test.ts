@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_GAP_MS, judge, measure, type Keystroke } from '../src/web/burst.js';
+import { MAX_GAP_MS, judge, measure, pushKey, type Keystroke } from '../src/web/burst.js';
 
 /** Builds keystrokes `gap` ms apart, ending with Enter `tail` ms after the last one. */
 function burstOf(text: string, gap: number, tail = 8): { keys: Keystroke[]; enteredAt: number } {
@@ -57,5 +57,34 @@ describe('burst timing gate', () => {
   it('counts Enter as part of the duration', () => {
     const keys: Keystroke[] = [...'1357059979'].map((ch, i) => ({ at: 1000 + i * 8, ch }));
     expect(measure(keys, 1000 + 9 * 8 + 5).durationMs).toBe(77);
+  });
+});
+
+describe('burst buffer', () => {
+  it('keeps a contiguous burst together', () => {
+    let keys: Keystroke[] = [];
+    [...'1357059979'].forEach((ch, i) => {
+      keys = pushKey(keys, 1000 + i * 8, ch);
+    });
+    expect(keys).toHaveLength(10);
+  });
+
+  it('starts a new burst after a long gap, so a stray key does not veto the next tap', () => {
+    // A '5' pressed ten minutes before the card. Before pushKey this left the head of
+    // the buffer in place and the card measured a 600 s gap, so it was refused.
+    let keys: Keystroke[] = [{ at: 0, ch: '5' }];
+    [...'1357059979'].forEach((ch, i) => {
+      keys = pushKey(keys, 600_000 + i * 8, ch);
+    });
+    const burst = measure(keys, 600_000 + 10 * 8);
+    expect(burst.text).toBe('1357059979');
+    expect(judge(burst)).toBeNull();
+  });
+
+  it('splits on a gap just past the window', () => {
+    let keys: Keystroke[] = [{ at: 1000, ch: '1' }];
+    keys = pushKey(keys, 1000 + MAX_GAP_MS + 1, '2');
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toEqual({ at: 1000 + MAX_GAP_MS + 1, ch: '2' });
   });
 });

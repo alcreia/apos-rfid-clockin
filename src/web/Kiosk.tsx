@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, postJson } from './api.js';
-import { judge, measure, type Keystroke, type Rejection } from './burst.js';
+import { judge, measure, pushKey, type Keystroke, type Rejection } from './burst.js';
 
 type Outcome =
   | { kind: 'idle' }
@@ -161,8 +161,12 @@ export default function Kiosk() {
           const at = performance.now();
 
           if (e.key !== 'Enter') {
-            if (e.key.length === 1) keys.current.push({ at, ch: e.key });
-            if (keys.current.length > 64) keys.current = keys.current.slice(-64);
+            // No modifiers: a reader sends bare digits, and Shift would turn one into a
+            // symbol. Ctrl/Alt/Meta also mean a shortcut, not a card.
+            if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+              keys.current = pushKey(keys.current, at, e.key);
+              if (keys.current.length > 64) keys.current = keys.current.slice(-64);
+            }
             return;
           }
 

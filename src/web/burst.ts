@@ -32,6 +32,19 @@ export type Burst = {
 
 export type Rejection = 'too-short' | 'too-long' | 'too-slow' | 'key-repeat';
 
+/**
+ * Adds a keystroke to the current burst, starting a new one when the gap says so.
+ *
+ * Without this, any stray keypress stays at the head of the buffer forever: the next
+ * real card then measures a gap of minutes, is refused as typing, and the employee has
+ * to tap twice. A reader emits one contiguous burst, so a gap ends the burst.
+ */
+export function pushKey(keys: Keystroke[], at: number, ch: string): Keystroke[] {
+  const last = keys[keys.length - 1];
+  if (last && at - last.at > MAX_GAP_MS) return [{ at, ch }];
+  return [...keys, { at, ch }];
+}
+
 export function measure(keys: Keystroke[], enteredAt: number): Burst {
   const text = keys.map((k) => k.ch).join('');
   let maxGap = 0;

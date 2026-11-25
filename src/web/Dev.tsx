@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RosterImport from './RosterImport.js';
 import { api, postJson } from './api.js';
-import { judge, measure, type Burst, type Keystroke } from './burst.js';
+import { judge, measure, pushKey, type Burst, type Keystroke } from './burst.js';
 
 type Decoded = { cleaned: string; asDecimal: string | null; asHex: string | null };
 type Employee = { uid: string; name: string };
@@ -154,7 +154,9 @@ export default function Dev() {
           onKeyDown={(e) => {
             const at = performance.now();
             if (e.key !== 'Enter') {
-              if (e.key.length === 1) keys.current.push({ at, ch: e.key });
+              if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                keys.current = pushKey(keys.current, at, e.key);
+              }
               return;
             }
             e.preventDefault();
