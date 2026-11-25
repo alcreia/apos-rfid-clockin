@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, postJson } from './api.js';
+import { judge, measure, type Keystroke, type Rejection } from './burst.js';
 
 type Outcome =
   | { kind: 'idle' }
@@ -97,6 +98,23 @@ export default function Kiosk() {
   const [unsaved, setUnsaved] = useState(0);
   const [mode, setMode] = useState('stub');
   const timer = useRef<number | null>(null);
+  const keys = useRef<Keystroke[]>([]);
+  const [hint, setHint] = useState<string | null>(null);
+  const hintTimer = useRef<number | null>(null);
+
+  /**
+   * Keyboard input is ignored rather than misread as a card — and it says so, because a
+   * kiosk that silently does nothing looks broken to the person standing at it.
+   */
+  const showHint = (reason: Rejection) => {
+    setHint(
+      reason === 'too-slow' || reason === 'key-repeat'
+        ? 'Tempelkan kartu, bukan mengetik'
+        : 'Gunakan kartu Anda',
+    );
+    if (hintTimer.current) window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setHint(null), 2500);
+  };
 
   useEffect(() => {
     const poll = async () => {
@@ -140,13 +158,31 @@ export default function Kiosk() {
         autoFocus
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key !== 'Enter') return;
+          const at = performance.now();
+
+          if (e.key !== 'Enter') {
+            if (e.key.length === 1) keys.current.push({ at, ch: e.key });
+            if (keys.current.length > 64) keys.current = keys.current.slice(-64);
+            return;
+          }
+
           e.preventDefault();
           const raw = e.currentTarget.value;
+          const burst = measure(keys.current, at);
+          keys.current = [];
+
           // Clear the node synchronously too: a state update is async, and a second
           // burst in the same tick would append its digits to this one.
           e.currentTarget.value = '';
           setValue('');
+
+          // Typed input never reaches the server: no ledger row, no rejected-card log,
+          // no sheet write. Only the card reader's rhythm gets through.
+          const rejection = judge(burst);
+          if (rejection) {
+            showHint(rejection);
+            return;
+          }
           void submit(raw);
         }}
         aria-label="card reader input"
@@ -156,6 +192,7 @@ export default function Kiosk() {
 
       <main className="kiosk__stage" role="status" aria-live="polite">
         <OutcomeCard outcome={outcome} />
+        {hint ? <div className="card__hint">{hint}</div> : null}
       </main>
 
       <footer className="kiosk__foot">

@@ -15,12 +15,28 @@ expensive to reverse.
 | Step | Behaviour |
 |---|---|
 | Card tapped | reader types e.g. `1357059979` + Enter into the focused input |
+| Typing on the keyboard | **ignored** — a burst has to have a card's rhythm (40 ms gaps, under 400 ms total), so a stray keystroke or someone typing digit-by-digit never reaches the server |
 | Decode | decimal → hex → byte-reverse → `8B17E350` (the form the Log already holds) |
 | Unknown card | rejected, never written; recorded in `data/rejected.jsonl`, visible on `/dev` |
 | First tap today | appended to `data/taps.jsonl` (fsynced), confirmed on screen with a name |
 | Second tap today | no row written; screen says "Already clocked in at 08:03" |
 | Google slow / down | the tap is already recorded locally; the queue retries with backoff |
-| Restart | ledger replays; today's dedupe index and the unsynced queue are rebuilt |
+| Restart | ledger replays; today's dedupe index and the unsynced queue rebuilt |
+
+### Why typed input is ignored
+
+The reader *is* a keyboard, so the app cannot ask Windows which device a character came
+from. It can only look at rhythm: a card arrives in one burst at 5–15 ms per character; a
+person types at 100 ms+ per character. `src/web/burst.ts` rejects anything slower than
+40 ms per character or 400 ms total, anything under 4 or over 16 characters, and anything
+that repeats the same key (auto-repeat is ~31 ms and would otherwise pass the speed test).
+
+Rejected input never reaches the server: no ledger row, no rejected-card entry, no sheet
+write. The screen says *"Tempelkan kartu, bukan mengetik"* so it does not simply look dead.
+
+This stops accident and casual mischief, not a determined attacker — anyone with the
+devtools console can POST `/api/tap` directly. Deliberate typed entry lives on `/dev`,
+which `DEV=0` removes completely: its routes and its page both return 404.
 
 ## Run it
 
@@ -213,7 +229,7 @@ no data loss. Fix `fromReaderDecimal` first anyway.
 ## Tests
 
 ```bash
-npm test          # 91 tests: UID decode, 42 real cards, Day boundary, dedupe, ledger, import, queue
+npm test          # 113 tests: UID decode, 42 real cards, Day boundary, dedupe, ledger, import, queue, burst timing
 npm run typecheck
 
 # what does this burst decode to? (paste one from the door)

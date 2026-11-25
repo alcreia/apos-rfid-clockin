@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import RosterImport from './RosterImport.js';
 import { api, postJson } from './api.js';
+import { judge, measure, type Burst, type Keystroke } from './burst.js';
 
 type Decoded = { cleaned: string; asDecimal: string | null; asHex: string | null };
 type Employee = { uid: string; name: string };
@@ -31,7 +32,17 @@ export default function Dev() {
   const [notice, setNotice] = useState('');
   const [manualUid, setManualUid] = useState('');
   const [lastRaw, setLastRaw] = useState('');
-  const [log, setLog] = useState<Array<{ raw: string; uid: string | null; at: string }>>([]);
+  const [log, setLog] = useState<
+    Array<{
+      raw: string;
+      uid: string | null;
+      at: string;
+      durationMs: number;
+      maxGapMs: number;
+      verdict: string | null;
+    }>
+  >([]);
+  const keys = useRef<Keystroke[]>([]);
 
   const refresh = useCallback(async () => {
     const [roster, rejected] = await Promise.all([
@@ -65,7 +76,7 @@ export default function Dev() {
    * A reader burst ends with Enter. Commit it, then empty the box — otherwise the
    * next card's digits are appended to this one and the decode is nonsense.
    */
-  const commitBurst = (raw: string) => {
+  const commitBurst = (raw: string, burst?: Burst) => {
     if (!raw.trim()) return;
     const cleaned = raw.replace(/[\s:.-]/g, '').toUpperCase();
     const asDecimal = fromReaderDecimal(cleaned);
@@ -73,7 +84,19 @@ export default function Dev() {
     setDecoded({ cleaned, asDecimal, asHex });
     setLastRaw(raw.trim());
     setValue('');
-    setLog((prev) => [{ raw: raw.trim(), uid: asDecimal ?? asHex, at: new Date().toISOString() }, ...prev].slice(0, 60));
+    setLog((prev) =>
+      [
+        {
+          raw: raw.trim(),
+          uid: asDecimal ?? asHex,
+          at: new Date().toISOString(),
+          durationMs: burst?.durationMs ?? 0,
+          maxGapMs: burst?.maxGapMs ?? 0,
+          verdict: burst ? judge(burst) : null,
+        },
+        ...prev,
+      ].slice(0, 60),
+    );
   };
 
   const enrol = async () => {
@@ -129,15 +152,22 @@ export default function Dev() {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const raw = e.currentTarget.value;
-              // Clear the DOM node synchronously as well as the state: state updates are
-              // async, and a second burst landing in the same tick would otherwise append
-              // its digits to this one and decode as nonsense.
-              e.currentTarget.value = '';
-              commitBurst(raw);
+            const at = performance.now();
+            if (e.key !== 'Enter') {
+              if (e.key.length === 1) keys.current.push({ at, ch: e.key });
+              return;
             }
+            e.preventDefault();
+            const raw = e.currentTarget.value;
+            // The dev page accepts anything, including typing — that is the point of it —
+            // but it shows the burst timing so the kiosk's threshold can be checked.
+            const burst = measure(keys.current, at);
+            keys.current = [];
+            // Clear the DOM node synchronously as well as the state: state updates are
+            // async, and a second burst landing in the same tick would otherwise append
+            // its digits to this one and decode as nonsense.
+            e.currentTarget.value = '';
+            commitBurst(raw, burst);
           }}
         />
         {decoded && (
@@ -203,6 +233,11 @@ export default function Dev() {
             return `${matched} of ${employees.length} roster cards seen · ${seen.size} distinct UIDs${unknown > 0 ? ` · ${unknown} UID(s) not in roster` : ''}`;
           })()}
         </p>
+        <p className="dev__lead">
+          The kiosk only accepts a burst whose card-like rhythm it trusts: characters within 40 ms of
+          each other, done in under 400 ms. The timing column is the measurement — if a real tap reads
+          slower than that, the threshold is wrong for this reader, not the reader.
+        </p>
         <table className="dev__table">
           <thead>
             <tr>
@@ -210,6 +245,7 @@ export default function Dev() {
               <th>raw burst</th>
               <th>UID</th>
               <th>name in roster</th>
+              <th>timing</th>
             </tr>
           </thead>
           <tbody>
@@ -223,11 +259,19 @@ export default function Dev() {
                   <code>{e.uid ?? '—'}</code>
                 </td>
                 <td>{e.uid ? (nameFor(e.uid) ?? <span className="chip chip--err">not in roster</span>) : 'undecodable'}</td>
+                <td>
+                  {e.durationMs} ms · gap {e.maxGapMs} ms{' '}
+                  {e.verdict ? (
+                    <span className="chip chip--err">{e.verdict}</span>
+                  ) : (
+                    <span className="chip chip--ok">kiosk would accept</span>
+                  )}
+                </td>
               </tr>
             ))}
             {log.length === 0 && (
               <tr>
-                <td colSpan={4}>tap a card above — each burst is recorded here so 42 cards can be checked</td>
+                <td colSpan={5}>tap a card above — each burst is recorded here so 42 cards can be checked</td>
               </tr>
             )}
           </tbody>

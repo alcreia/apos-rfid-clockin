@@ -276,8 +276,12 @@ if (DEV) {
 }
 
 app.use(express.static(DIST));
+// The dev page only exists when its routes do. A page whose every request 404s is worse
+// than no page, and on the door PC enrolment should not be reachable at all.
 // Express 5 / path-to-regexp v8 rejects `*`, so match with a regex.
-app.get(/^\/dev(\/.*)?$/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
+if (DEV) {
+  app.get(/^\/dev(\/.*)?$/, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
+}
 
 /**
  * Without this, a malformed JSON body or an oversized one returns Express's HTML error

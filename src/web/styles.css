@@ -382,3 +382,16 @@ button.ghost:hover {
     animation: none;
   }
 }
+
+.chip--ok {
+  color: var(--ok);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+/* Shown when keyboard input is rejected: quiet, but present, so the kiosk never looks dead. */
+.card__hint {
+  margin-top: 20px;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: var(--warn);
+}
